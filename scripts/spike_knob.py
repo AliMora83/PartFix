@@ -1,5 +1,5 @@
 """Spike: stove knob photo -> Muse Spark -> OpenSCAD -> STL + PNG."""
-import re
+import argparse
 import sys
 from pathlib import Path
 
@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.llm import ask  # noqa: E402
-from src.render import RenderError, render  # noqa: E402
+from src.prompts import CLEARANCE_RULES, hints_block  # noqa: E402
+from src.render import RenderError, extract_scad, render  # noqa: E402
 
 IMAGE = next(p for p in (ROOT / "samples" / "knob.jpg", ROOT / "samples" / "knob.jpeg") if p.exists())
 SCAD = ROOT / "output" / "spike_knob.scad"
@@ -28,17 +29,13 @@ FIX = """OpenSCAD failed on your code with this error:
 Return the corrected full model as ONE fenced ```openscad block."""
 
 
-def extract_scad(text):
-    m = re.findall(r"```(?:openscad|scad)?\s*\n(.*?)```", text, re.S)
-    if not m:
-        raise ValueError("no fenced code block in model reply")
-    return m[0].strip() + "\n"
-
-
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--hints", default="", help="your own description of the part")
+    prompt = hints_block(ap.parse_args().hints) + PROMPT + "\n\n" + CLEARANCE_RULES
     total_in = total_out = 0
-    text, rec = ask(PROMPT, [IMAGE])
-    history = [{"role": "user", "content": PROMPT}]  # image omitted from retries
+    text, rec = ask(prompt, [IMAGE])
+    history = [{"role": "user", "content": prompt}]  # image omitted from retries
     print(text.split("```")[0].strip(), "\n")
     for attempt in range(1, MAX_ATTEMPTS + 1):
         total_in += rec["input_tokens"] or 0
