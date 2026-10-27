@@ -1,4 +1,4 @@
-"""Refine the spike knob: render, compare to photo, revise."""
+"""Refine the knob: render, judge (printability, SAM silhouette IoU, model score), revise the best."""
 import argparse
 import sys
 from pathlib import Path
@@ -7,30 +7,32 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.contact_sheet import make_sheet  # noqa: E402
+from src.knob_inputs import HINTS, PHOTOS, PRIMARY, SAM_PROMPT, check_photos  # noqa: E402
 from src.refine import refine  # noqa: E402
+from src.silhouette import _cache_path  # noqa: E402
 
-PHOTO = ROOT / "samples" / "knob.jpeg"
 START = ROOT / "output" / "spike_knob.scad"
-
-HINTS = (
-    "Stove knob. The grip is NOT a straight bar: it is a curved, sweeping ridge that arcs across "
-    "the face like a wave/crescent, with a domed top and one concave curved side. The grip ends "
-    "blend down into the rim. The knob face is slightly dished between the grip and the rim. The "
-    "rim has a rounded edge. Small round indicator dot on the rim. 6 mm D-shaft socket underneath."
-)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--hints", default=HINTS, help="your own description of the part")
     ap.add_argument("--iters", type=int, default=3)
+    ap.add_argument("--start", type=Path, default=START, help="starting SCAD (run spike_knob.py first)")
+    ap.add_argument("--no-silhouette", action="store_true", help="skip the SAM IoU score")
     args = ap.parse_args()
+    check_photos()
 
-    res = refine([PHOTO], START.read_text(), args.hints, max_iters=args.iters)
-    sheet = make_sheet(PHOTO, res["run_dir"], res["iterations"])
+    sil = None if args.no_silhouette else PRIMARY
+    res = refine(PHOTOS, args.start.read_text(), args.hints, max_iters=args.iters,
+                 silhouette_photo=sil, sam_prompt=SAM_PROMPT)
+    mask = _cache_path(PRIMARY, SAM_PROMPT) if sil else None
+    sheet = make_sheet(PRIMARY, res["run_dir"], res["iterations"], best=res["best"], mask=mask)
     tin = sum(u["input_tokens"] or 0 for u in res["usage"])
     tout = sum(u["output_tokens"] or 0 for u in res["usage"])
-    print("scores:", {f"iter_{i['n']}": i["score"] for i in res["iterations"]})
+    for i in res["iterations"]:
+        print(f"iter_{i['n']}: final={i['score']} iou={i['iou']} model={i['model']} "
+              f"printable={i['printable']}")
     print(f"best: iter_{res['best']}  final: {res['run_dir']}/final.scad (+ .stl)")
     print(f"contact sheet: {sheet}")
     print(f"tokens: input={tin} output={tout} over {len(res['usage'])} calls")

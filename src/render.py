@@ -47,11 +47,19 @@ def render(scad_path, out_dir=None):
     scad = Path(scad_path)
     out = Path(out_dir) if out_dir else scad.parent
     out.mkdir(parents=True, exist_ok=True)
-    stl, png = out / f"{scad.stem}.stl", out / f"{scad.stem}.png"
-    exe = _bin()
-    _run([exe, "-o", str(stl), str(scad)])
-    _run([exe, "-o", str(png), *IMG_ARGS, str(scad)])
+    stl, png = render_stl(scad, out), out / f"{scad.stem}.png"
+    _run([_bin(), "-o", str(png), *IMG_ARGS, str(scad)])
     return stl, png
+
+
+def render_stl(scad_path, out_dir=None):
+    """Return the stl path. Raises RenderError with OpenSCAD's stderr."""
+    scad = Path(scad_path)
+    out = Path(out_dir) if out_dir else scad.parent
+    out.mkdir(parents=True, exist_ok=True)
+    stl = out / f"{scad.stem}.stl"
+    _run([_bin(), "-o", str(stl), str(scad)])
+    return stl
 
 
 def render_views(scad_path, out_dir=None):
